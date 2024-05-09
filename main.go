@@ -1,38 +1,38 @@
 package main
 
 import (
-	"context"
-	"errors"
+	"flag"
 	"fmt"
-	"io"
 	"net"
-	"os"
-	"os/signal"
 	"strings"
-	"syscall"
-	"time"
 
 	"github.com/anmitsu/go-shlex"
 	"github.com/charmbracelet/log"
 	"github.com/charmbracelet/ssh"
 	"github.com/charmbracelet/wish"
+	"github.com/charmbracelet/wish/activeterm"
 	"github.com/charmbracelet/wish/logging"
 	"github.com/chzyer/readline"
 )
 
-const (
-	host = "localhost"
-	port = "23235"
-)
+var client *LXCClient
 
 func main() {
+	port := flag.Int("port", 2222, "port to listen on")
+	profile := flag.String("profile", "default", "LXD profile to use")
+	flag.Parse()
+	var err error
+	client, err = NewLXCClient(*profile)
+	if err != nil {
+		panic(err)
+	}
 	s, err := wish.NewServer(
-		wish.WithAddress(net.JoinHostPort(host, port)),
+		wish.WithAddress(net.JoinHostPort("0.0.0.0", fmt.Sprintf("%d", *port))),
 		wish.WithHostKeyPath(".ssh/id_ed25519"),
 		wish.WithBanner("Welcome to the LXC Pannel\n"),
 		wish.WithPublicKeyAuth(func(ctx ssh.Context, key ssh.PublicKey) bool {
 			user := ctx.User()
-			keys, err := list_pubkeys(user)
+			keys, err := listPubkeys(user)
 			if err != nil {
 				return false
 			}
@@ -55,7 +55,7 @@ func main() {
 						pcitems = append(pcitems, readline.PcItem(k))
 					}
 					l, err := readline.NewEx(&readline.Config{
-						Prompt:          "\033[01;32m" + sess.User() + "@lxc\033[0m$ ",
+						Prompt:          "\033[01;32m" + sess.User() + "@lxcpanel\033[0m$ ",
 						InterruptPrompt: "^C",
 						EOFPrompt:       "exit",
 						AutoComplete: readline.NewPrefixCompleter(
@@ -75,9 +75,6 @@ func main() {
 					for {
 						line, err := l.Readline()
 						if err != nil {
-							if err != io.EOF {
-								log.Error("Could not read line", "error", err)
-							}
 							return
 						}
 						line = strings.TrimSpace(line)
@@ -98,28 +95,16 @@ func main() {
 					}
 				}
 			},
+			activeterm.Middleware(),
 			logging.Middleware(),
 		),
 	)
 	if err != nil {
-		log.Error("Could not start server", "error", err)
+		panic(err)
 	}
 
-	done := make(chan os.Signal, 1)
-	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-	log.Info("Starting SSH server", "host", host, "port", port)
-	go func() {
-		if err = s.ListenAndServe(); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
-			log.Error("Could not start server", "error", err)
-			done <- nil
-		}
-	}()
-
-	<-done
-	log.Info("Stopping SSH server")
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer func() { cancel() }()
-	if err := s.Shutdown(ctx); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
-		log.Error("Could not stop server", "error", err)
+	log.Info("Starting SSH server", "host", "0.0.0.0", "port", *port)
+	if err = s.ListenAndServe(); err != nil {
+		panic(err)
 	}
 }

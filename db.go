@@ -37,7 +37,7 @@ func init() {
 	}
 }
 
-func list_pubkeys(username string) ([]DBPubKey, error) {
+func listPubkeys(username string) ([]DBPubKey, error) {
 	rows, err := db.Query("SELECT fingerprint, pubkey FROM pubkeys WHERE username = ?", username)
 	if err != nil {
 		return nil, err
@@ -54,19 +54,19 @@ func list_pubkeys(username string) ([]DBPubKey, error) {
 	return pubkeys, nil
 }
 
-func add_pubkey(username, pubkey string) error {
+func addPubkey(username, pubkey string) error {
 	hash := sha256.Sum256([]byte(pubkey))
 	hexhash := hex.EncodeToString(hash[:])
 	_, err := db.Exec("INSERT INTO pubkeys (username, fingerprint, pubkey) VALUES (?, ?, ?)", username, hexhash, pubkey)
 	return err
 }
 
-func delete_pubkey(username, fingerprint string) error {
+func deletePubkey(username, fingerprint string) error {
 	_, err := db.Exec("DELETE FROM pubkeys WHERE username = ? AND SUBSTR(fingerprint, 1, ?) = ?", username, len(fingerprint), fingerprint)
 	return err
 }
 
-func show_user(username string) (DBUser, error) {
+func getUser(username string) (DBUser, error) {
 	var user DBUser
 	err := db.QueryRow("SELECT username, admin, max_instance_count FROM users WHERE username = ?", username).Scan(&user.Username, &user.Admin, &user.MaxInstanceCount)
 	return user, err

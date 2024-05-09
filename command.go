@@ -1,9 +1,17 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"strconv"
+
+	"github.com/canonical/lxd/shared/api"
 	"github.com/charmbracelet/ssh"
 	"github.com/charmbracelet/wish"
+	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 type CommandFunc func(sess ssh.Session, args []string) int
@@ -11,6 +19,20 @@ type CommandFunc func(sess ssh.Session, args []string) int
 var commands = map[string]CommandFunc{
 	"pubkey": pubkey,
 	"whoami": whoami,
+	"lxc":    lxc,
+	"ls":     ls,
+	"ssh":    sshCmd,
+}
+
+func exactArgs(n int) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) != n {
+			cmd.Usage()
+			cmd.Println()
+			return fmt.Errorf("accepts %d arg(s), received %d", n, len(args))
+		}
+		return nil
+	}
 }
 
 func pubkey(sess ssh.Session, args []string) int {
@@ -20,7 +42,7 @@ func pubkey(sess ssh.Session, args []string) int {
 	cmd.AddCommand(&cobra.Command{
 		Use: "list",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			keys, err := list_pubkeys(sess.User())
+			keys, err := listPubkeys(sess.User())
 			if err != nil {
 				return err
 			}
@@ -36,17 +58,17 @@ func pubkey(sess ssh.Session, args []string) int {
 	})
 	cmd.AddCommand(&cobra.Command{
 		Use:  "add",
-		Args: cobra.ExactArgs(1),
+		Args: exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := add_pubkey(sess.User(), args[0])
+			err := addPubkey(sess.User(), args[0])
 			return err
 		},
 	})
 	cmd.AddCommand(&cobra.Command{
 		Use:  "delete",
-		Args: cobra.ExactArgs(1),
+		Args: exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := delete_pubkey(sess.User(), args[0])
+			err := deletePubkey(sess.User(), args[0])
 			return err
 		},
 	})
@@ -54,6 +76,7 @@ func pubkey(sess ssh.Session, args []string) int {
 	cmd.SetIn(sess)
 	cmd.SetOut(sess)
 	cmd.SetErr(sess)
+	cmd.SilenceUsage = true
 	err := cmd.Execute()
 	if err != nil {
 		return 1
@@ -62,12 +85,164 @@ func pubkey(sess ssh.Session, args []string) int {
 }
 
 func whoami(sess ssh.Session, args []string) int {
-	user, err := show_user(sess.User())
+	user, err := getUser(sess.User())
 	if err != nil {
 		return 1
 	}
-	wish.Printf(sess, "Username: %s\n", user.Username)
-	wish.Printf(sess, "Admin: %t\n", user.Admin)
-	wish.Printf(sess, "MaxInstanceCount: %d\n", user.MaxInstanceCount)
+	wish.Printf(sess, "username: %s\n", user.Username)
+	wish.Printf(sess, "admin: %t\n", user.Admin)
+	wish.Printf(sess, "max_instance_count: %d\n", user.MaxInstanceCount)
+	return 0
+}
+
+func ls(sess ssh.Session, args []string) int {
+	newArgs := append([]string{"lxc", "list"}, args[1:]...)
+	return lxc(sess, newArgs)
+}
+
+func sshCmd(sess ssh.Session, args []string) int {
+	newArgs := append([]string{"lxc", "shell"}, args[1:]...)
+	return lxc(sess, newArgs)
+}
+
+func lxc(sess ssh.Session, args []string) int {
+	cmd := cobra.Command{
+		Use: "lxc",
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use: "list",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			containers, err := client.ListContainers(sess.User())
+			if err != nil {
+				return err
+			}
+			table := tablewriter.NewWriter(sess)
+			table.SetRowLine(true)
+			table.SetAlignment(tablewriter.ALIGN_LEFT)
+			table.SetHeader([]string{"Name", "Friendly Name", "State", "SSH Port"})
+			for _, container := range containers {
+				port := client.SSHPort(container.Name)
+				name := container.Config["user.friendlyname"]
+				portStr := ""
+				if port == 0 {
+					portStr = "N/A"
+				} else {
+					portStr = strconv.Itoa(port)
+				}
+				table.Append([]string{container.Name, name, container.Status, portStr})
+			}
+			table.Render()
+			return nil
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:  "start <name>",
+		Args: exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			err := client.StartContainer(sess.User(), args[0])
+			return err
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:  "stop <name>",
+		Args: exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			err := client.StopContainer(sess.User(), args[0])
+			return err
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:  "delete <name>",
+		Args: exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			err := client.DeleteContainer(sess.User(), args[0])
+			return err
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:  "info <name>",
+		Args: exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			container, err := client.GetContainer(sess.User(), args[0])
+			if err != nil {
+				return err
+			}
+			yaml.NewEncoder(sess).Encode(container)
+			return nil
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:  "create <friendly name>",
+		Args: exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			containers, err := client.ListContainers(sess.User())
+			if err != nil {
+				return err
+			}
+			user, err := getUser(sess.User())
+			if err != nil {
+				return err
+			}
+			if len(containers) >= user.MaxInstanceCount {
+				return errors.New("max instance count reached")
+			}
+			progress := ProgressRenderer{
+				sess: sess,
+			}
+			op, err := client.CreateContainer(sess.User(), args[0])
+			if err != nil {
+				return err
+			}
+			op.AddHandler(progress.UpdateOp)
+			err = op.Wait()
+			return err
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:  "shell <name>",
+		Args: exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			container, err := client.GetContainer(sess.User(), args[0])
+			if err != nil {
+				return err
+			}
+			ch := make(chan api.InstanceExecControl)
+			_, windowChanges, _ := sess.Pty()
+
+			go func() {
+				for {
+					select {
+					case window, ok := <-windowChanges:
+						if !ok {
+							return
+						}
+						ch <- api.InstanceExecControl{
+							Command: "window-resize",
+							Args: map[string]string{
+								"width":  strconv.Itoa(window.Width),
+								"height": strconv.Itoa(window.Height),
+							},
+						}
+					case <-ctx.Done():
+						return
+					}
+				}
+			}()
+			return client.StartShell(container.Name, sess, sess, ch)
+		},
+	})
+	cmd.SetArgs(args[1:])
+	cmd.SetIn(sess)
+	cmd.SetOut(sess)
+	cmd.SetErr(sess)
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	err := cmd.Execute()
+	if err != nil {
+		wish.Printf(sess, "Error: %v\n", err)
+		return 1
+	}
 	return 0
 }
