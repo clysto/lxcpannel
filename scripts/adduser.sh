@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Usage: adduser.sh [db] username
+
+if [ $# -eq 1 ]; then
+    db="./lxcpannel.sqlite3"
+    username="$1"
+else
+    db="$1"
+    username="$2"
+fi
+
+if [ $(sqlite3 $db "SELECT COUNT(*) FROM users WHERE username='$username';") -ne 0 ]; then
+    echo "User already exists"
+    exit 1
+fi
+
+sqlite3 $db "INSERT INTO users (username) VALUES ('$username');"
+echo "User added successfully"
