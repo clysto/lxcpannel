@@ -4,17 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"strconv"
 
 	"github.com/canonical/lxd/shared/api"
 	"github.com/charmbracelet/ssh"
 	"github.com/charmbracelet/wish"
+	"github.com/chzyer/readline"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
 
-type CommandFunc func(sess ssh.Session, args []string) int
+type CommandFunc func(sess ssh.Session, rl *readline.Instance, args []string) int
 
 var commands = map[string]CommandFunc{
 	"pubkey": pubkey,
@@ -22,6 +24,7 @@ var commands = map[string]CommandFunc{
 	"lxc":    lxc,
 	"ls":     ls,
 	"ssh":    sshCmd,
+	"ip":     ipCmd,
 }
 
 func exactArgs(n int) cobra.PositionalArgs {
@@ -35,7 +38,18 @@ func exactArgs(n int) cobra.PositionalArgs {
 	}
 }
 
-func pubkey(sess ssh.Session, args []string) int {
+func ipCmd(sess ssh.Session, rl *readline.Instance, args []string) int {
+	addr := sess.LocalAddr()
+	host, _, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		wish.Printf(sess, "Error: %v\n", err)
+		return 1
+	}
+	wish.Printf(sess, "%s\n", host)
+	return 0
+}
+
+func pubkey(sess ssh.Session, rl *readline.Instance, args []string) int {
 	cmd := cobra.Command{
 		Use: "pubkey",
 	}
@@ -84,7 +98,7 @@ func pubkey(sess ssh.Session, args []string) int {
 	return 0
 }
 
-func whoami(sess ssh.Session, args []string) int {
+func whoami(sess ssh.Session, rl *readline.Instance, args []string) int {
 	user, err := getUser(sess.User())
 	if err != nil {
 		return 1
@@ -95,17 +109,17 @@ func whoami(sess ssh.Session, args []string) int {
 	return 0
 }
 
-func ls(sess ssh.Session, args []string) int {
+func ls(sess ssh.Session, rl *readline.Instance, args []string) int {
 	newArgs := append([]string{"lxc", "list"}, args[1:]...)
-	return lxc(sess, newArgs)
+	return lxc(sess, rl, newArgs)
 }
 
-func sshCmd(sess ssh.Session, args []string) int {
+func sshCmd(sess ssh.Session, rl *readline.Instance, args []string) int {
 	newArgs := append([]string{"lxc", "shell"}, args[1:]...)
-	return lxc(sess, newArgs)
+	return lxc(sess, rl, newArgs)
 }
 
-func lxc(sess ssh.Session, args []string) int {
+func lxc(sess ssh.Session, rl *readline.Instance, args []string) int {
 	cmd := cobra.Command{
 		Use: "lxc",
 	}
@@ -230,7 +244,12 @@ func lxc(sess ssh.Session, args []string) int {
 					}
 				}
 			}()
-			return client.StartShell(container.Name, sess, sess, ch)
+			err = client.StartShell(container.Name, cmd.InOrStdin(), cmd.OutOrStdout(), ch)
+			if err != nil {
+				return err
+			}
+			sess.(*SessionWrapper).DummyWrite()
+			return nil
 		},
 	})
 	cmd.SetArgs(args[1:])

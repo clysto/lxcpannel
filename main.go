@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 
@@ -16,6 +17,40 @@ import (
 )
 
 var client *LXCClient
+
+type SessionWrapper struct {
+	ssh.Session
+	ch chan []byte
+}
+
+func (s *SessionWrapper) Connect() {
+	go func() {
+		var buffer [32 * 1024]byte
+		for {
+			n, err := s.Session.Read(buffer[:])
+			if err != nil {
+				close(s.ch)
+				return
+			}
+			if n > 0 {
+				s.ch <- buffer[:n]
+			}
+		}
+	}()
+}
+
+func (s *SessionWrapper) DummyWrite() {
+	s.ch <- []byte(" ")
+}
+
+func (s *SessionWrapper) Read(p []byte) (n int, err error) {
+	data, ok := <-s.ch
+	if !ok {
+		return 0, io.EOF
+	}
+	n = copy(p, data)
+	return n, nil
+}
 
 func main() {
 	port := flag.Int("port", 2222, "port to listen on")
@@ -49,7 +84,19 @@ func main() {
 		}),
 		wish.WithMiddleware(
 			func(next ssh.Handler) ssh.Handler {
-				return func(sess ssh.Session) {
+				return func(sess_ ssh.Session) {
+					sess := &SessionWrapper{
+						Session: sess_,
+						ch:      make(chan []byte, 1024),
+					}
+					sess.Connect()
+
+					addr := sess.LocalAddr()
+					host, _, err := net.SplitHostPort(addr.String())
+					if err == nil {
+						wish.Printf(sess, "IP: %s\n", host)
+					}
+
 					pcitems := []readline.PrefixCompleterInterface{}
 					for k := range commands {
 						pcitems = append(pcitems, readline.PcItem(k))
@@ -63,7 +110,6 @@ func main() {
 						),
 						HistorySearchFold: true,
 						Stdin:             sess,
-						StdinWriter:       sess,
 						Stdout:            sess,
 						Stderr:            sess,
 					})
@@ -88,11 +134,12 @@ func main() {
 						args = append([]string(nil), args...)
 						f := commands[args[0]]
 						if f != nil {
-							f(sess, args)
+							f(sess, l, args)
 						} else {
 							sess.Write([]byte(fmt.Sprintf("%s: command not found\n", args[0])))
 						}
 					}
+					next(sess)
 				}
 			},
 			activeterm.Middleware(),
