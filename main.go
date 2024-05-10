@@ -7,16 +7,20 @@ import (
 	"net"
 	"strings"
 
+	_ "embed"
+
 	"github.com/anmitsu/go-shlex"
 	"github.com/charmbracelet/log"
 	"github.com/charmbracelet/ssh"
 	"github.com/charmbracelet/wish"
-	"github.com/charmbracelet/wish/activeterm"
 	"github.com/charmbracelet/wish/logging"
 	"github.com/chzyer/readline"
 )
 
 var client *LXCClient
+
+//go:embed banner.txt
+var banner string
 
 type SessionWrapper struct {
 	ssh.Session
@@ -55,16 +59,19 @@ func (s *SessionWrapper) Read(p []byte) (n int, err error) {
 func main() {
 	port := flag.Int("port", 2222, "port to listen on")
 	profile := flag.String("profile", "default", "LXD profile to use")
+	dbPath := flag.String("db", "lxcpanel.sqlite3", "path to database")
+	keyPath := flag.String("key", ".ssh/id_ed25519", "path to host key")
 	flag.Parse()
 	var err error
 	client, err = NewLXCClient(*profile)
 	if err != nil {
 		panic(err)
 	}
+	initDB(*dbPath)
 	s, err := wish.NewServer(
 		wish.WithAddress(net.JoinHostPort("0.0.0.0", fmt.Sprintf("%d", *port))),
-		wish.WithHostKeyPath(".ssh/id_ed25519"),
-		wish.WithBanner("Welcome to the LXC Pannel\n"),
+		wish.WithHostKeyPath(*keyPath),
+		wish.WithBanner(banner),
 		wish.WithPublicKeyAuth(func(ctx ssh.Context, key ssh.PublicKey) bool {
 			user := ctx.User()
 			keys, err := listPubkeys(user)
@@ -94,7 +101,7 @@ func main() {
 					addr := sess.LocalAddr()
 					host, _, err := net.SplitHostPort(addr.String())
 					if err == nil {
-						wish.Printf(sess, "IP: %s\n", host)
+						wish.Printf(sess, "IPv4 address: %s\n", host)
 					}
 
 					pcitems := []readline.PrefixCompleterInterface{}
@@ -108,10 +115,11 @@ func main() {
 						AutoComplete: readline.NewPrefixCompleter(
 							pcitems...,
 						),
-						HistorySearchFold: true,
-						Stdin:             sess,
-						Stdout:            sess,
-						Stderr:            sess,
+						HistorySearchFold:   true,
+						ForceUseInteractive: true,
+						Stdin:               sess,
+						Stdout:              sess,
+						Stderr:              sess,
 					})
 					if err != nil {
 						log.Error("Could not create readline", "error", err)
@@ -142,7 +150,6 @@ func main() {
 					next(sess)
 				}
 			},
-			activeterm.Middleware(),
 			logging.Middleware(),
 		),
 	)

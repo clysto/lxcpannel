@@ -1,0 +1,7 @@
+Welcome to the LXC Panel
+
+ * lxc list:          list all containers
+ * lxc start <name>:  start a container
+ * lxc stop  <name>:  stop a container
+ * lxc shell <name>:  open a shell in a container
+

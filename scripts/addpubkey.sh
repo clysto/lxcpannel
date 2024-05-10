@@ -3,7 +3,7 @@
 # Usage: addpubkey.sh [db] username pubkey
 
 if [ $# -eq 2 ]; then
-    db="./lxcpannel.sqlite3"
+    db="./lxcpanel.sqlite3"
     username="$1"
     pubkey="$2"
 else

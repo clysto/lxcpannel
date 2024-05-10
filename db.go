@@ -26,9 +26,9 @@ type DBUser struct {
 	MaxInstanceCount int
 }
 
-func init() {
+func initDB(path string) {
 	var err error
-	db, err = sql.Open("sqlite3", "./lxcpannel.sqlite3")
+	db, err = sql.Open("sqlite3", path)
 	if err != nil {
 		panic(err)
 	}

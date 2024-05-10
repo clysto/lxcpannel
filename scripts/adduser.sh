@@ -3,7 +3,7 @@
 # Usage: adduser.sh [db] username
 
 if [ $# -eq 1 ]; then
-    db="./lxcpannel.sqlite3"
+    db="./lxcpanel.sqlite3"
     username="$1"
 else
     db="$1"

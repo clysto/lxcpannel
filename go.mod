@@ -1,4 +1,4 @@
-module lxcpannel
+module lxcpanel
 
 go 1.22.1
 
