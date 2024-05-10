@@ -29,7 +29,7 @@ type SessionWrapper struct {
 
 func (s *SessionWrapper) Connect() {
 	go func() {
-		var buffer [32 * 1024]byte
+		var buffer [1024]byte
 		for {
 			n, err := s.Session.Read(buffer[:])
 			if err != nil {
@@ -61,9 +61,10 @@ func main() {
 	profile := flag.String("profile", "default", "LXD profile to use")
 	dbPath := flag.String("db", "lxcpanel.sqlite3", "path to database")
 	keyPath := flag.String("key", ".ssh/id_ed25519", "path to host key")
+	defaultImage := flag.String("image", "c9fba5728bfe168a", "default image to use")
 	flag.Parse()
 	var err error
-	client, err = NewLXCClient(*profile)
+	client, err = NewLXCClient(*profile, *defaultImage)
 	if err != nil {
 		panic(err)
 	}
@@ -103,31 +104,30 @@ func main() {
 					if err == nil {
 						wish.Printf(sess, "IPv4 address: %s\n", host)
 					}
-
 					pcitems := []readline.PrefixCompleterInterface{}
 					for k := range commands {
 						pcitems = append(pcitems, readline.PcItem(k))
 					}
-					l, err := readline.NewEx(&readline.Config{
+					rl, err := readline.NewEx(&readline.Config{
 						Prompt:          "\033[01;32m" + sess.User() + "@lxcpanel\033[0m$ ",
 						InterruptPrompt: "^C",
 						EOFPrompt:       "exit",
 						AutoComplete: readline.NewPrefixCompleter(
 							pcitems...,
 						),
-						HistorySearchFold:   true,
-						ForceUseInteractive: true,
-						Stdin:               sess,
-						Stdout:              sess,
-						Stderr:              sess,
+						HistorySearchFold: true,
+						Stdin:             sess,
+						Stdout:            sess,
+						Stderr:            sess,
+						// ForceUseInteractive: true,
 					})
 					if err != nil {
 						log.Error("Could not create readline", "error", err)
 						return
 					}
-					defer l.Close()
+					defer rl.Close()
 					for {
-						line, err := l.Readline()
+						line, err := rl.Readline()
 						if err != nil {
 							return
 						}
@@ -142,7 +142,7 @@ func main() {
 						args = append([]string(nil), args...)
 						f := commands[args[0]]
 						if f != nil {
-							f(sess, l, args)
+							f(sess, args)
 						} else {
 							sess.Write([]byte(fmt.Sprintf("%s: command not found\n", args[0])))
 						}

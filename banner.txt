@@ -1,7 +1,11 @@
 Welcome to the LXC Panel
 
- * lxc list:          list all containers
- * lxc start <name>:  start a container
- * lxc stop  <name>:  stop a container
- * lxc shell <name>:  open a shell in a container
+ * lxc list:           list all containers
+ * lxc images:         list all images
+ * lxc start  <name>:  start a container
+ * lxc stop   <name>:  stop a container
+ * lxc create <name>:  stop a container
+ * lxc shell  <name>:  open a shell in a container
+ * whoami:             show the current user
+ * ip:                 show the current ip address
 

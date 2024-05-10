@@ -10,19 +10,18 @@ import (
 	"github.com/canonical/lxd/shared/api"
 	"github.com/charmbracelet/ssh"
 	"github.com/charmbracelet/wish"
-	"github.com/chzyer/readline"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
 
-type CommandFunc func(sess ssh.Session, rl *readline.Instance, args []string) int
+type CommandFunc func(sess ssh.Session, args []string) int
 
 var commands = map[string]CommandFunc{
-	"pubkey": pubkey,
-	"whoami": whoami,
-	"lxc":    lxc,
-	"ls":     ls,
+	"pubkey": pubkeyCmd,
+	"whoami": whoamiCmd,
+	"lxc":    lxcCmd,
+	"ls":     lsCmd,
 	"ssh":    sshCmd,
 	"ip":     ipCmd,
 }
@@ -38,7 +37,7 @@ func exactArgs(n int) cobra.PositionalArgs {
 	}
 }
 
-func ipCmd(sess ssh.Session, rl *readline.Instance, args []string) int {
+func ipCmd(sess ssh.Session, args []string) int {
 	addr := sess.LocalAddr()
 	host, _, err := net.SplitHostPort(addr.String())
 	if err != nil {
@@ -49,7 +48,7 @@ func ipCmd(sess ssh.Session, rl *readline.Instance, args []string) int {
 	return 0
 }
 
-func pubkey(sess ssh.Session, rl *readline.Instance, args []string) int {
+func pubkeyCmd(sess ssh.Session, args []string) int {
 	cmd := cobra.Command{
 		Use: "pubkey",
 	}
@@ -71,7 +70,7 @@ func pubkey(sess ssh.Session, rl *readline.Instance, args []string) int {
 		},
 	})
 	cmd.AddCommand(&cobra.Command{
-		Use:  "add",
+		Use:  "add <public key>",
 		Args: exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			err := addPubkey(sess.User(), args[0])
@@ -79,7 +78,7 @@ func pubkey(sess ssh.Session, rl *readline.Instance, args []string) int {
 		},
 	})
 	cmd.AddCommand(&cobra.Command{
-		Use:  "delete",
+		Use:  "delete <fingerprint>",
 		Args: exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			err := deletePubkey(sess.User(), args[0])
@@ -98,7 +97,7 @@ func pubkey(sess ssh.Session, rl *readline.Instance, args []string) int {
 	return 0
 }
 
-func whoami(sess ssh.Session, rl *readline.Instance, args []string) int {
+func whoamiCmd(sess ssh.Session, args []string) int {
 	user, err := getUser(sess.User())
 	if err != nil {
 		return 1
@@ -109,17 +108,17 @@ func whoami(sess ssh.Session, rl *readline.Instance, args []string) int {
 	return 0
 }
 
-func ls(sess ssh.Session, rl *readline.Instance, args []string) int {
+func lsCmd(sess ssh.Session, args []string) int {
 	newArgs := append([]string{"lxc", "list"}, args[1:]...)
-	return lxc(sess, rl, newArgs)
+	return lxcCmd(sess, newArgs)
 }
 
-func sshCmd(sess ssh.Session, rl *readline.Instance, args []string) int {
+func sshCmd(sess ssh.Session, args []string) int {
 	newArgs := append([]string{"lxc", "shell"}, args[1:]...)
-	return lxc(sess, rl, newArgs)
+	return lxcCmd(sess, newArgs)
 }
 
-func lxc(sess ssh.Session, rl *readline.Instance, args []string) int {
+func lxcCmd(sess ssh.Session, args []string) int {
 	cmd := cobra.Command{
 		Use: "lxc",
 	}
@@ -185,7 +184,7 @@ func lxc(sess ssh.Session, rl *readline.Instance, args []string) int {
 			return nil
 		},
 	})
-	cmd.AddCommand(&cobra.Command{
+	createCmd := &cobra.Command{
 		Use:  "create <friendly name>",
 		Args: exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -203,7 +202,11 @@ func lxc(sess ssh.Session, rl *readline.Instance, args []string) int {
 			progress := ProgressRenderer{
 				sess: sess,
 			}
-			op, err := client.CreateContainer(sess.User(), args[0])
+			image, err := cmd.Flags().GetString("fingerprint")
+			if err != nil {
+				return err
+			}
+			op, err := client.CreateContainer(sess.User(), args[0], image)
 			if err != nil {
 				return err
 			}
@@ -211,7 +214,9 @@ func lxc(sess ssh.Session, rl *readline.Instance, args []string) int {
 			err = op.Wait()
 			return err
 		},
-	})
+	}
+	createCmd.Flags().String("fingerprint", client.defaultImage, "image fingerprint")
+	cmd.AddCommand(createCmd)
 	cmd.AddCommand(&cobra.Command{
 		Use:  "shell <name>",
 		Args: exactArgs(1),
@@ -249,6 +254,29 @@ func lxc(sess ssh.Session, rl *readline.Instance, args []string) int {
 				return err
 			}
 			sess.(*SessionWrapper).DummyWrite()
+			return nil
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use: "images",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			images, err := client.ListImages()
+			if err != nil {
+				return err
+			}
+			table := tablewriter.NewWriter(sess)
+			table.SetRowLine(true)
+			table.SetAlignment(tablewriter.ALIGN_LEFT)
+			table.SetHeader([]string{"Fingerprint", "Description", "Type", "Size"})
+			for _, image := range images {
+				table.Append([]string{
+					image.Fingerprint[:16],
+					image.Properties["description"],
+					image.Type,
+					fmt.Sprintf("%dMB", image.Size/1024/1024),
+				})
+			}
+			table.Render()
 			return nil
 		},
 	})

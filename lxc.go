@@ -20,9 +20,10 @@ type LXCClient struct {
 	usedPorts      map[int]bool
 	mutex          sync.Mutex
 	defaultProfile string
+	defaultImage   string
 }
 
-func NewLXCClient(defaultProfile string) (*LXCClient, error) {
+func NewLXCClient(defaultProfile string, defaultImage string) (*LXCClient, error) {
 	client, err := lxd.ConnectLXDUnix("", nil)
 	if err != nil {
 		return nil, err
@@ -52,6 +53,7 @@ func NewLXCClient(defaultProfile string) (*LXCClient, error) {
 		usedPorts:      usedPorts,
 		mutex:          sync.Mutex{},
 		defaultProfile: defaultProfile,
+		defaultImage:   defaultImage,
 	}, nil
 }
 
@@ -76,12 +78,12 @@ func (c *LXCClient) GetContainer(username string, name string) (*api.Instance, e
 	return nil, errors.New("container not found")
 }
 
-func (c *LXCClient) CreateContainer(username string, friendlyname string) (lxd.Operation, error) {
+func (c *LXCClient) CreateContainer(username string, friendlyname string, fingerprint string) (lxd.Operation, error) {
 	instancePost := api.InstancesPost{
 		Name: shortuuid.New(),
 		Source: api.InstanceSource{
 			Type:              "image",
-			Fingerprint:       "c9fba5728bfe168aa73084b94deab3dd3a1e349b5f7e0b5e5a8e945899cb0378",
+			Fingerprint:       fingerprint,
 			AllowInconsistent: false,
 		},
 		InstancePut: api.InstancePut{
@@ -157,6 +159,14 @@ func (c *LXCClient) StopContainer(username string, name string) error {
 		return err
 	}
 	return op.Wait()
+}
+
+func (c *LXCClient) ListImages() ([]api.Image, error) {
+	images, err := c.client.GetImages()
+	if err != nil {
+		return nil, err
+	}
+	return images, nil
 }
 
 func (c *LXCClient) StartShell(name string, stdin io.Reader, stdout io.Writer, ch chan api.InstanceExecControl) error {
