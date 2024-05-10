@@ -72,7 +72,6 @@ func main() {
 	s, err := wish.NewServer(
 		wish.WithAddress(net.JoinHostPort("0.0.0.0", fmt.Sprintf("%d", *port))),
 		wish.WithHostKeyPath(*keyPath),
-		wish.WithBanner(banner),
 		wish.WithPublicKeyAuth(func(ctx ssh.Context, key ssh.PublicKey) bool {
 			user := ctx.User()
 			keys, err := listPubkeys(user)
@@ -98,6 +97,7 @@ func main() {
 						ch:      make(chan []byte, 1024),
 					}
 					sess.Connect()
+					wish.Print(sess, banner)
 
 					addr := sess.LocalAddr()
 					host, _, err := net.SplitHostPort(addr.String())
