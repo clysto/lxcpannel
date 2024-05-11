@@ -12,7 +12,7 @@ else
     pubkey="$3"
 fi
 
-fingerprint=$(echo $pubkey | shasum -a 256 | cut -d ' ' -f 1)
+fingerprint=$(echo -n $pubkey | shasum -a 256 | cut -d ' ' -f 1)
 
 if [ $(sqlite3 $db "SELECT COUNT(*) FROM pubkeys WHERE fingerprint='$fingerprint';") -ne 0 ]; then
     echo "Public key already exists"
@@ -20,4 +20,8 @@ if [ $(sqlite3 $db "SELECT COUNT(*) FROM pubkeys WHERE fingerprint='$fingerprint
 fi
 
 sqlite3 $db "INSERT INTO pubkeys (fingerprint, username, pubkey) VALUES ('$fingerprint', '$username', '$pubkey');"
-echo "Public key added successfully"
+if [ $? -eq 0 ]; then
+    echo "Public key added successfully"
+else
+    echo "Failed to add public key"
+fi

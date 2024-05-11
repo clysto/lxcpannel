@@ -1,13 +1,13 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/canonical/lxd/shared/api"
+	"github.com/charmbracelet/ssh"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -203,39 +203,28 @@ func lxcCmd(ctx *CommandContext, args []string) int {
 		Use:  "shell <name>",
 		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			bgCtx, cancel := context.WithCancel(context.Background())
-			defer cancel()
 			container, err := client.GetContainer(ctx.User(), args[0])
 			if err != nil {
 				return err
 			}
 			ch := make(chan api.InstanceExecControl)
-			windowChanges := ctx.WindowChanges()
 
-			go func() {
-				for {
-					select {
-					case window, ok := <-windowChanges:
-						if !ok {
-							return
-						}
-						ch <- api.InstanceExecControl{
-							Command: "window-resize",
-							Args: map[string]string{
-								"width":  strconv.Itoa(window.Width),
-								"height": strconv.Itoa(window.Height),
-							},
-						}
-					case <-bgCtx.Done():
-						return
-					}
+			id := ctx.OnWindowChange(func(window ssh.Window) {
+				ch <- api.InstanceExecControl{
+					Command: "window-resize",
+					Args: map[string]string{
+						"width":  strconv.Itoa(window.Width),
+						"height": strconv.Itoa(window.Height),
+					},
 				}
-			}()
-			err = client.StartShell(container.Name, cmd.InOrStdin(), cmd.OutOrStdout(), ch)
+			})
+			width, height := ctx.WindowSize()
+			err = client.StartShell(container.Name, cmd.InOrStdin(), cmd.OutOrStdout(), width, height, ch)
 			if err != nil {
 				return err
 			}
 			ctx.StdinWrite([]byte(" "))
+			ctx.RemoveWindowChangeHandler(id)
 			return nil
 		},
 	})

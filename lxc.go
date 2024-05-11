@@ -169,7 +169,7 @@ func (c *LXCClient) ListImages() ([]api.Image, error) {
 	return images, nil
 }
 
-func (c *LXCClient) StartShell(name string, stdin io.Reader, stdout io.Writer, ch chan api.InstanceExecControl) error {
+func (c *LXCClient) StartShell(name string, stdin io.Reader, stdout io.Writer, width int, height int, ch chan api.InstanceExecControl) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	dataDone := make(chan bool)
@@ -182,8 +182,8 @@ func (c *LXCClient) StartShell(name string, stdin io.Reader, stdout io.Writer, c
 		User:        1000,
 		Group:       1000,
 		WaitForWS:   true,
-		Width:       80,
-		Height:      24,
+		Width:       width,
+		Height:      height,
 		Interactive: true,
 	}, &lxd.InstanceExecArgs{
 		Stdin:    stdin,

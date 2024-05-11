@@ -10,11 +10,16 @@ import (
 )
 
 type CommandContext struct {
-	sess ssh.Session
-	ch   chan []byte
+	sess                ssh.Session
+	ch                  chan []byte
+	windowChangeHanders []func(ssh.Window)
+	done                chan bool
+	windowWidth         int
+	windowHeight        int
 }
 
 func (s *CommandContext) Connect() {
+	s.done = make(chan bool)
 	go func() {
 		var buffer [1024]byte
 		for {
@@ -28,6 +33,38 @@ func (s *CommandContext) Connect() {
 			}
 		}
 	}()
+	_, windowChanges, _ := s.sess.Pty()
+	go func() {
+		for {
+			select {
+			case <-s.done:
+				return
+			case window := <-windowChanges:
+				for _, f := range s.windowChangeHanders {
+					s.windowWidth = window.Width
+					s.windowHeight = window.Height
+					f(window)
+				}
+			}
+		}
+	}()
+}
+
+func (s *CommandContext) Disconnect() {
+	s.done <- true
+}
+
+func (s *CommandContext) OnWindowChange(f func(ssh.Window)) int {
+	s.windowChangeHanders = append(s.windowChangeHanders, f)
+	return len(s.windowChangeHanders) - 1
+}
+
+func (s *CommandContext) WindowSize() (int, int) {
+	return s.windowWidth, s.windowHeight
+}
+
+func (s *CommandContext) RemoveWindowChangeHandler(id int) {
+	s.windowChangeHanders = append(s.windowChangeHanders[:id], s.windowChangeHanders[id+1:]...)
 }
 
 func (s *CommandContext) StdinWrite(p []byte) {
@@ -58,11 +95,6 @@ func (s *CommandContext) IP() string {
 
 func (s *CommandContext) User() string {
 	return s.sess.User()
-}
-
-func (s *CommandContext) WindowChanges() <-chan ssh.Window {
-	_, windowChanges, _ := s.sess.Pty()
-	return windowChanges
 }
 
 func WordWrap(text string, lineWidth int) string {

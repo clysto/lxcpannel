@@ -16,4 +16,8 @@ if [ $(sqlite3 $db "SELECT COUNT(*) FROM users WHERE username='$username';") -ne
 fi
 
 sqlite3 $db "INSERT INTO users (username) VALUES ('$username');"
-echo "User added successfully"
+if [ $? -eq 0 ]; then
+    echo "User added successfully"
+else
+    echo "Failed to add user"
+fi

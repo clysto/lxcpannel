@@ -65,18 +65,20 @@ func main() {
 
 					ip := ctx.IP()
 					prompt := "\033[01;32m" + sess.User() + "@" + ip + "\033[0m:\033[01;34mustc\033[0m$ "
+
 					terminal := term.NewTerminal(ctx, prompt)
 					terminal.AutoCompleteCallback = CommandComplete
+					id := ctx.OnWindowChange(func(window ssh.Window) {
+						terminal.SetSize(window.Width, window.Height)
+					})
 
 					fmt.Fprint(terminal, banner)
-					if err == nil {
-						fmt.Fprintf(terminal, "IPv4 address: %s\n", ip)
-					}
+					fmt.Fprintf(terminal, "IPv4 address: %s\n", ip)
 
 					for {
 						line, err := terminal.ReadLine()
 						if err != nil {
-							return
+							break
 						}
 						line = strings.TrimSpace(line)
 						if line == "exit" {
@@ -94,6 +96,9 @@ func main() {
 							fmt.Fprintf(terminal, "%s: command not found\n", args[0])
 						}
 					}
+
+					ctx.RemoveWindowChangeHandler(id)
+					ctx.Disconnect()
 					next(sess)
 				}
 			},
