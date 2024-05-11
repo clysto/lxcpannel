@@ -1,11 +1,14 @@
-Welcome to the LXC Panel
+Welcome to the LXC Panel v1.0.0
 
- * lxc list:           list all containers
- * lxc images:         list all images
- * lxc start  <name>:  start a container
- * lxc stop   <name>:  stop a container
- * lxc create <name>:  stop a container
- * lxc shell  <name>:  open a shell in a container
- * whoami:             show the current user
- * ip:                 show the current ip address
+ * ip:                            show the current ip address
+ * whoami:                        show the current user
+ * lxc list:                      list all containers
+ * lxc images:                    list all images
+ * lxc start  <name>:             start a container
+ * lxc stop   <name>:             stop a container
+ * lxc create <name>:             stop a container
+ * lxc shell  <name>:             open a shell in a container
+ * pubkey list:                   list all public keys
+ * pubkey add <key>:              add a public key
+ * pubkey delete <fingerprint>:   delete a public key
 

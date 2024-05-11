@@ -26,7 +26,7 @@ type DBUser struct {
 	MaxInstanceCount int
 }
 
-func initDB(path string) {
+func InitDB(path string) {
 	var err error
 	db, err = sql.Open("sqlite3", path)
 	if err != nil {
@@ -37,7 +37,7 @@ func initDB(path string) {
 	}
 }
 
-func listPubkeys(username string) ([]DBPubKey, error) {
+func ListPubkeys(username string) ([]DBPubKey, error) {
 	rows, err := db.Query("SELECT fingerprint, pubkey FROM pubkeys WHERE username = ?", username)
 	if err != nil {
 		return nil, err
@@ -54,19 +54,19 @@ func listPubkeys(username string) ([]DBPubKey, error) {
 	return pubkeys, nil
 }
 
-func addPubkey(username, pubkey string) error {
+func AddPubkey(username, pubkey string) error {
 	hash := sha256.Sum256([]byte(pubkey))
 	hexhash := hex.EncodeToString(hash[:])
 	_, err := db.Exec("INSERT INTO pubkeys (username, fingerprint, pubkey) VALUES (?, ?, ?)", username, hexhash, pubkey)
 	return err
 }
 
-func deletePubkey(username, fingerprint string) error {
+func DeletePubkey(username, fingerprint string) error {
 	_, err := db.Exec("DELETE FROM pubkeys WHERE username = ? AND SUBSTR(fingerprint, 1, ?) = ?", username, len(fingerprint), fingerprint)
 	return err
 }
 
-func getUser(username string) (DBUser, error) {
+func GetUser(username string) (DBUser, error) {
 	var user DBUser
 	err := db.QueryRow("SELECT username, admin, max_instance_count FROM users WHERE username = ?", username).Scan(&user.Username, &user.Admin, &user.MaxInstanceCount)
 	return user, err

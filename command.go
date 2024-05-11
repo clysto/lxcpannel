@@ -4,20 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"strconv"
+	"strings"
 
 	"github.com/canonical/lxd/shared/api"
-	"github.com/charmbracelet/ssh"
-	"github.com/charmbracelet/wish"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
 
-type CommandFunc func(sess ssh.Session, args []string) int
+type CommandFunc func(ctx *CommandContext, args []string) int
 
-var commands = map[string]CommandFunc{
+var Commands = map[string]CommandFunc{
 	"pubkey": pubkeyCmd,
 	"whoami": whoamiCmd,
 	"lxc":    lxcCmd,
@@ -26,69 +24,51 @@ var commands = map[string]CommandFunc{
 	"ip":     ipCmd,
 }
 
-func exactArgs(n int) cobra.PositionalArgs {
-	return func(cmd *cobra.Command, args []string) error {
-		if len(args) != n {
-			cmd.Usage()
-			cmd.Println()
-			return fmt.Errorf("accepts %d arg(s), received %d", n, len(args))
-		}
-		return nil
-	}
-}
-
-func ipCmd(sess ssh.Session, args []string) int {
-	addr := sess.LocalAddr()
-	host, _, err := net.SplitHostPort(addr.String())
-	if err != nil {
-		wish.Printf(sess, "Error: %v\n", err)
-		return 1
-	}
-	wish.Printf(sess, "%s\n", host)
+func ipCmd(ctx *CommandContext, args []string) int {
+	fmt.Fprintf(ctx, "%s\n", ctx.IP())
 	return 0
 }
 
-func pubkeyCmd(sess ssh.Session, args []string) int {
+func pubkeyCmd(ctx *CommandContext, args []string) int {
 	cmd := cobra.Command{
 		Use: "pubkey",
 	}
 	cmd.AddCommand(&cobra.Command{
 		Use: "list",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			keys, err := listPubkeys(sess.User())
+			keys, err := ListPubkeys(ctx.User())
 			if err != nil {
 				return err
 			}
-			for i, dbkey := range keys {
-				sess.Write([]byte(dbkey.Fingerprint[:16] + ": "))
-				sess.Write([]byte(dbkey.PEM + "\n"))
-				if i != len(keys)-1 {
-					sess.Write([]byte("\n"))
-				}
+			table := tablewriter.NewWriter(cmd.OutOrStdout())
+			table.SetHeader([]string{"Fingerprint", "Public Key"})
+			table.SetRowLine(true)
+			for _, dbkey := range keys {
+				table.Append([]string{dbkey.Fingerprint[:16], WordWrap(dbkey.PEM, 48)})
 			}
+			table.Render()
 			return nil
 		},
 	})
 	cmd.AddCommand(&cobra.Command{
 		Use:  "add <public key>",
-		Args: exactArgs(1),
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := addPubkey(sess.User(), args[0])
-			return err
+			return AddPubkey(ctx.User(), args[0])
 		},
 	})
 	cmd.AddCommand(&cobra.Command{
 		Use:  "delete <fingerprint>",
-		Args: exactArgs(1),
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := deletePubkey(sess.User(), args[0])
+			err := DeletePubkey(ctx.User(), args[0])
 			return err
 		},
 	})
 	cmd.SetArgs(args[1:])
-	cmd.SetIn(sess)
-	cmd.SetOut(sess)
-	cmd.SetErr(sess)
+	cmd.SetIn(ctx)
+	cmd.SetOut(ctx)
+	cmd.SetErr(ctx)
 	cmd.SilenceUsage = true
 	err := cmd.Execute()
 	if err != nil {
@@ -97,39 +77,41 @@ func pubkeyCmd(sess ssh.Session, args []string) int {
 	return 0
 }
 
-func whoamiCmd(sess ssh.Session, args []string) int {
-	user, err := getUser(sess.User())
+func whoamiCmd(ctx *CommandContext, args []string) int {
+	user, err := GetUser(ctx.User())
 	if err != nil {
 		return 1
 	}
-	wish.Printf(sess, "username: %s\n", user.Username)
-	wish.Printf(sess, "admin: %t\n", user.Admin)
-	wish.Printf(sess, "max_instance_count: %d\n", user.MaxInstanceCount)
+	table := tablewriter.NewWriter(ctx)
+	table.SetHeader([]string{"Username", "Admin", "Max Instance Count"})
+	table.SetRowLine(true)
+	table.Append([]string{user.Username, fmt.Sprintf("%t", user.Admin), strconv.Itoa(user.MaxInstanceCount)})
+	table.Render()
 	return 0
 }
 
-func lsCmd(sess ssh.Session, args []string) int {
+func lsCmd(ctx *CommandContext, args []string) int {
 	newArgs := append([]string{"lxc", "list"}, args[1:]...)
-	return lxcCmd(sess, newArgs)
+	return lxcCmd(ctx, newArgs)
 }
 
-func sshCmd(sess ssh.Session, args []string) int {
+func sshCmd(ctx *CommandContext, args []string) int {
 	newArgs := append([]string{"lxc", "shell"}, args[1:]...)
-	return lxcCmd(sess, newArgs)
+	return lxcCmd(ctx, newArgs)
 }
 
-func lxcCmd(sess ssh.Session, args []string) int {
+func lxcCmd(ctx *CommandContext, args []string) int {
 	cmd := cobra.Command{
 		Use: "lxc",
 	}
 	cmd.AddCommand(&cobra.Command{
 		Use: "list",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			containers, err := client.ListContainers(sess.User())
+			containers, err := client.ListContainers(ctx.User())
 			if err != nil {
 				return err
 			}
-			table := tablewriter.NewWriter(sess)
+			table := tablewriter.NewWriter(cmd.OutOrStdout())
 			table.SetRowLine(true)
 			table.SetAlignment(tablewriter.ALIGN_LEFT)
 			table.SetHeader([]string{"Name", "Friendly Name", "State", "SSH Port"})
@@ -150,49 +132,49 @@ func lxcCmd(sess ssh.Session, args []string) int {
 	})
 	cmd.AddCommand(&cobra.Command{
 		Use:  "start <name>",
-		Args: exactArgs(1),
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := client.StartContainer(sess.User(), args[0])
+			err := client.StartContainer(ctx.User(), args[0])
 			return err
 		},
 	})
 	cmd.AddCommand(&cobra.Command{
 		Use:  "stop <name>",
-		Args: exactArgs(1),
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := client.StopContainer(sess.User(), args[0])
+			err := client.StopContainer(ctx.User(), args[0])
 			return err
 		},
 	})
 	cmd.AddCommand(&cobra.Command{
 		Use:  "delete <name>",
-		Args: exactArgs(1),
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := client.DeleteContainer(sess.User(), args[0])
+			err := client.DeleteContainer(ctx.User(), args[0])
 			return err
 		},
 	})
 	cmd.AddCommand(&cobra.Command{
 		Use:  "info <name>",
-		Args: exactArgs(1),
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			container, err := client.GetContainer(sess.User(), args[0])
+			container, err := client.GetContainer(ctx.User(), args[0])
 			if err != nil {
 				return err
 			}
-			yaml.NewEncoder(sess).Encode(container)
+			yaml.NewEncoder(cmd.OutOrStdout()).Encode(container)
 			return nil
 		},
 	})
 	createCmd := &cobra.Command{
 		Use:  "create <friendly name>",
-		Args: exactArgs(1),
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			containers, err := client.ListContainers(sess.User())
+			containers, err := client.ListContainers(ctx.User())
 			if err != nil {
 				return err
 			}
-			user, err := getUser(sess.User())
+			user, err := GetUser(ctx.User())
 			if err != nil {
 				return err
 			}
@@ -200,13 +182,13 @@ func lxcCmd(sess ssh.Session, args []string) int {
 				return errors.New("max instance count reached")
 			}
 			progress := ProgressRenderer{
-				sess: sess,
+				out: ctx,
 			}
 			image, err := cmd.Flags().GetString("fingerprint")
 			if err != nil {
 				return err
 			}
-			op, err := client.CreateContainer(sess.User(), args[0], image)
+			op, err := client.CreateContainer(ctx.User(), args[0], image)
 			if err != nil {
 				return err
 			}
@@ -219,16 +201,16 @@ func lxcCmd(sess ssh.Session, args []string) int {
 	cmd.AddCommand(createCmd)
 	cmd.AddCommand(&cobra.Command{
 		Use:  "shell <name>",
-		Args: exactArgs(1),
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx, cancel := context.WithCancel(context.Background())
+			bgCtx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			container, err := client.GetContainer(sess.User(), args[0])
+			container, err := client.GetContainer(ctx.User(), args[0])
 			if err != nil {
 				return err
 			}
 			ch := make(chan api.InstanceExecControl)
-			_, windowChanges, _ := sess.Pty()
+			windowChanges := ctx.WindowChanges()
 
 			go func() {
 				for {
@@ -244,7 +226,7 @@ func lxcCmd(sess ssh.Session, args []string) int {
 								"height": strconv.Itoa(window.Height),
 							},
 						}
-					case <-ctx.Done():
+					case <-bgCtx.Done():
 						return
 					}
 				}
@@ -253,7 +235,7 @@ func lxcCmd(sess ssh.Session, args []string) int {
 			if err != nil {
 				return err
 			}
-			sess.(*SessionWrapper).DummyWrite()
+			ctx.StdinWrite([]byte(" "))
 			return nil
 		},
 	})
@@ -264,7 +246,7 @@ func lxcCmd(sess ssh.Session, args []string) int {
 			if err != nil {
 				return err
 			}
-			table := tablewriter.NewWriter(sess)
+			table := tablewriter.NewWriter(cmd.OutOrStdout())
 			table.SetRowLine(true)
 			table.SetAlignment(tablewriter.ALIGN_LEFT)
 			table.SetHeader([]string{"Fingerprint", "Description", "Type", "Size"})
@@ -281,15 +263,42 @@ func lxcCmd(sess ssh.Session, args []string) int {
 		},
 	})
 	cmd.SetArgs(args[1:])
-	cmd.SetIn(sess)
-	cmd.SetOut(sess)
-	cmd.SetErr(sess)
+	cmd.SetIn(ctx)
+	cmd.SetOut(ctx)
+	cmd.SetErr(ctx)
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
 	err := cmd.Execute()
 	if err != nil {
-		wish.Printf(sess, "Error: %v\n", err)
+		fmt.Fprintf(ctx, "Error: %v\n", err)
 		return 1
 	}
 	return 0
+}
+
+func CommandComplete(line string, pos int, key rune) (newLine string, newPos int, ok bool) {
+	if key == '\t' {
+		line = strings.TrimLeft(line, " ")
+		pos -= len(line) - len(strings.TrimLeft(line, " "))
+
+		firstSpace := strings.Index(line, " ")
+		var prefix string
+		if firstSpace == -1 {
+			prefix = line
+		} else {
+			prefix = line[:firstSpace]
+		}
+
+		for command := range Commands {
+			if strings.HasPrefix(command, prefix) {
+				if firstSpace == -1 {
+					return command, len(command), true
+				} else {
+					return command + line[firstSpace:], pos, true
+				}
+			}
+		}
+	}
+
+	return line, pos, false
 }

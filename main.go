@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io"
 	"net"
 	"strings"
 
@@ -14,47 +13,13 @@ import (
 	"github.com/charmbracelet/ssh"
 	"github.com/charmbracelet/wish"
 	"github.com/charmbracelet/wish/logging"
-	"github.com/chzyer/readline"
+	"golang.org/x/term"
 )
 
 var client *LXCClient
 
 //go:embed banner.txt
 var banner string
-
-type SessionWrapper struct {
-	ssh.Session
-	ch chan []byte
-}
-
-func (s *SessionWrapper) Connect() {
-	go func() {
-		var buffer [1024]byte
-		for {
-			n, err := s.Session.Read(buffer[:])
-			if err != nil {
-				close(s.ch)
-				return
-			}
-			if n > 0 {
-				s.ch <- buffer[:n]
-			}
-		}
-	}()
-}
-
-func (s *SessionWrapper) DummyWrite() {
-	s.ch <- []byte(" ")
-}
-
-func (s *SessionWrapper) Read(p []byte) (n int, err error) {
-	data, ok := <-s.ch
-	if !ok {
-		return 0, io.EOF
-	}
-	n = copy(p, data)
-	return n, nil
-}
 
 func main() {
 	port := flag.Int("port", 2222, "port to listen on")
@@ -68,13 +33,13 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	initDB(*dbPath)
+	InitDB(*dbPath)
 	s, err := wish.NewServer(
 		wish.WithAddress(net.JoinHostPort("0.0.0.0", fmt.Sprintf("%d", *port))),
 		wish.WithHostKeyPath(*keyPath),
 		wish.WithPublicKeyAuth(func(ctx ssh.Context, key ssh.PublicKey) bool {
 			user := ctx.User()
-			keys, err := listPubkeys(user)
+			keys, err := ListPubkeys(user)
 			if err != nil {
 				return false
 			}
@@ -91,43 +56,25 @@ func main() {
 		}),
 		wish.WithMiddleware(
 			func(next ssh.Handler) ssh.Handler {
-				return func(sess_ ssh.Session) {
-					sess := &SessionWrapper{
-						Session: sess_,
-						ch:      make(chan []byte, 1024),
+				return func(sess ssh.Session) {
+					ctx := &CommandContext{
+						sess: sess,
+						ch:   make(chan []byte, 1024),
 					}
-					sess.Connect()
-					wish.Print(sess, banner)
+					ctx.Connect()
 
-					addr := sess.LocalAddr()
-					host, _, err := net.SplitHostPort(addr.String())
+					ip := ctx.IP()
+					prompt := "\033[01;32m" + sess.User() + "@" + ip + "\033[0m:\033[01;34mustc\033[0m$ "
+					terminal := term.NewTerminal(ctx, prompt)
+					terminal.AutoCompleteCallback = CommandComplete
+
+					fmt.Fprint(terminal, banner)
 					if err == nil {
-						wish.Printf(sess, "IPv4 address: %s\n", host)
+						fmt.Fprintf(terminal, "IPv4 address: %s\n", ip)
 					}
-					pcitems := []readline.PrefixCompleterInterface{}
-					for k := range commands {
-						pcitems = append(pcitems, readline.PcItem(k))
-					}
-					rl, err := readline.NewEx(&readline.Config{
-						Prompt:          "\033[01;32m" + sess.User() + "@lxcpanel\033[0m$ ",
-						InterruptPrompt: "^C",
-						EOFPrompt:       "exit",
-						AutoComplete: readline.NewPrefixCompleter(
-							pcitems...,
-						),
-						HistorySearchFold: true,
-						Stdin:             sess,
-						Stdout:            sess,
-						Stderr:            sess,
-						// ForceUseInteractive: true,
-					})
-					if err != nil {
-						log.Error("Could not create readline", "error", err)
-						return
-					}
-					defer rl.Close()
+
 					for {
-						line, err := rl.Readline()
+						line, err := terminal.ReadLine()
 						if err != nil {
 							return
 						}
@@ -140,11 +87,11 @@ func main() {
 						}
 						args, _ := shlex.Split(line, true)
 						args = append([]string(nil), args...)
-						f := commands[args[0]]
+						f := Commands[args[0]]
 						if f != nil {
-							f(sess, args)
+							f(ctx, args)
 						} else {
-							sess.Write([]byte(fmt.Sprintf("%s: command not found\n", args[0])))
+							fmt.Fprintf(terminal, "%s: command not found\n", args[0])
 						}
 					}
 					next(sess)

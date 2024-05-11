@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -10,8 +11,6 @@ import (
 	"github.com/canonical/lxd/shared/api"
 	"github.com/canonical/lxd/shared/ioprogress"
 	"github.com/canonical/lxd/shared/termios"
-	"github.com/charmbracelet/ssh"
-	"github.com/charmbracelet/wish"
 )
 
 // ProgressRenderer tracks the progress information.
@@ -23,7 +22,7 @@ type ProgressRenderer struct {
 	wait      time.Time
 	done      bool
 	lock      sync.Mutex
-	sess      ssh.Session
+	out       io.Writer
 }
 
 func (p *ProgressRenderer) truncate(msg string) string {
@@ -75,11 +74,11 @@ func (p *ProgressRenderer) Done(msg string) {
 	if len(msg) > p.maxLength {
 		p.maxLength = len(msg)
 	} else {
-		wish.Printf(p.sess, "\r%s", strings.Repeat(" ", p.maxLength))
+		fmt.Fprintf(p.out, "\r%s", strings.Repeat(" ", p.maxLength))
 	}
 
-	wish.Print(p.sess, "\r")
-	wish.Print(p.sess, msg)
+	fmt.Print(p.out, "\r")
+	fmt.Print(p.out, msg)
 }
 
 // Update changes the status message to the provided string.
@@ -123,10 +122,10 @@ func (p *ProgressRenderer) Update(status string) {
 	if len(msg) > p.maxLength {
 		p.maxLength = len(msg)
 	} else {
-		wish.Printf(p.sess, "\r%s", strings.Repeat(" ", p.maxLength))
+		fmt.Fprintf(p.out, "\r%s", strings.Repeat(" ", p.maxLength))
 	}
 
-	wish.Print(p.sess, msg)
+	fmt.Fprint(p.out, msg)
 }
 
 // Warn shows a temporary message instead of the status.
@@ -155,10 +154,10 @@ func (p *ProgressRenderer) Warn(status string, timeout time.Duration) {
 	if len(msg) > p.maxLength {
 		p.maxLength = len(msg)
 	} else {
-		wish.Printf(p.sess, "\r%s", strings.Repeat(" ", p.maxLength))
+		fmt.Fprintf(p.out, "\r%s", strings.Repeat(" ", p.maxLength))
 	}
 
-	wish.Print(p.sess, msg)
+	fmt.Fprint(p.out, msg)
 }
 
 // UpdateProgress is a helper to update the status using an iopgress instance.
