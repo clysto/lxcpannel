@@ -29,3 +29,4 @@ EOF
 echo "$content" > lxcpanel_installer.run
 cat lxcpanel >> lxcpanel_installer.run
 chmod +x lxcpanel_installer.run
+rm lxcpanel
