@@ -1,4 +1,4 @@
-package main
+package common
 
 import (
 	"fmt"
@@ -23,6 +23,12 @@ type ProgressRenderer struct {
 	done      bool
 	lock      sync.Mutex
 	out       io.Writer
+}
+
+func NewProgressRenderer(out io.Writer) *ProgressRenderer {
+	return &ProgressRenderer{
+		out: out,
+	}
 }
 
 func (p *ProgressRenderer) truncate(msg string) string {

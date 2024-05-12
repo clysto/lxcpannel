@@ -1,4 +1,4 @@
-package main
+package lxc
 
 import (
 	"context"
@@ -55,6 +55,10 @@ func NewLXCClient(defaultProfile string, defaultImage string) (*LXCClient, error
 		defaultProfile: defaultProfile,
 		defaultImage:   defaultImage,
 	}, nil
+}
+
+func (c *LXCClient) DefaultImage() string {
+	return c.defaultImage
 }
 
 func (c *LXCClient) ListContainers(username string) ([]api.Instance, error) {

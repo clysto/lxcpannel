@@ -1,4 +1,4 @@
-package main
+package common
 
 import (
 	"crypto/sha256"
@@ -10,10 +10,8 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-//go:embed sql/init.sql
+//go:embed init.sql
 var initSQL string
-
-var db *sql.DB
 
 type DBPubKey struct {
 	Fingerprint string
@@ -28,17 +26,17 @@ type DBUser struct {
 
 func InitDB(path string) {
 	var err error
-	db, err = sql.Open("sqlite3", path)
+	DB, err = sql.Open("sqlite3", path)
 	if err != nil {
 		panic(err)
 	}
-	if _, err := db.Exec(initSQL); err != nil {
+	if _, err := DB.Exec(initSQL); err != nil {
 		panic(err)
 	}
 }
 
 func ListPubkeys(username string) ([]DBPubKey, error) {
-	rows, err := db.Query("SELECT fingerprint, pubkey FROM pubkeys WHERE username = ?", username)
+	rows, err := DB.Query("SELECT fingerprint, pubkey FROM pubkeys WHERE username = ?", username)
 	if err != nil {
 		return nil, err
 	}
@@ -57,17 +55,17 @@ func ListPubkeys(username string) ([]DBPubKey, error) {
 func AddPubkey(username, pubkey string) error {
 	hash := sha256.Sum256([]byte(pubkey))
 	hexhash := hex.EncodeToString(hash[:])
-	_, err := db.Exec("INSERT INTO pubkeys (username, fingerprint, pubkey) VALUES (?, ?, ?)", username, hexhash, pubkey)
+	_, err := DB.Exec("INSERT INTO pubkeys (username, fingerprint, pubkey) VALUES (?, ?, ?)", username, hexhash, pubkey)
 	return err
 }
 
 func DeletePubkey(username, fingerprint string) error {
-	_, err := db.Exec("DELETE FROM pubkeys WHERE username = ? AND SUBSTR(fingerprint, 1, ?) = ?", username, len(fingerprint), fingerprint)
+	_, err := DB.Exec("DELETE FROM pubkeys WHERE username = ? AND SUBSTR(fingerprint, 1, ?) = ?", username, len(fingerprint), fingerprint)
 	return err
 }
 
 func GetUser(username string) (DBUser, error) {
 	var user DBUser
-	err := db.QueryRow("SELECT username, admin, max_instance_count FROM users WHERE username = ?", username).Scan(&user.Username, &user.Admin, &user.MaxInstanceCount)
+	err := DB.QueryRow("SELECT username, admin, max_instance_count FROM users WHERE username = ?", username).Scan(&user.Username, &user.Admin, &user.MaxInstanceCount)
 	return user, err
 }

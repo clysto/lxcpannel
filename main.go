@@ -3,6 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"lxcpanel/cmd"
+	"lxcpanel/common"
+	"lxcpanel/lxc"
 	"net"
 	"strings"
 
@@ -16,8 +19,6 @@ import (
 	"golang.org/x/term"
 )
 
-var client *LXCClient
-
 //go:embed banner.txt
 var banner string
 
@@ -27,19 +28,20 @@ func main() {
 	dbPath := flag.String("db", "lxcpanel.sqlite3", "path to database")
 	keyPath := flag.String("key", ".ssh/id_ed25519", "path to host key")
 	defaultImage := flag.String("image", "c9fba5728bfe168a", "default image to use")
+	host := flag.String("host", "0.0.0.0", "host to listen on")
 	flag.Parse()
 	var err error
-	client, err = NewLXCClient(*profile, *defaultImage)
+	common.LxcClient, err = lxc.NewLXCClient(*profile, *defaultImage)
 	if err != nil {
 		panic(err)
 	}
-	InitDB(*dbPath)
+	common.InitDB(*dbPath)
 	s, err := wish.NewServer(
-		wish.WithAddress(net.JoinHostPort("0.0.0.0", fmt.Sprintf("%d", *port))),
+		wish.WithAddress(net.JoinHostPort(*host, fmt.Sprintf("%d", *port))),
 		wish.WithHostKeyPath(*keyPath),
 		wish.WithPublicKeyAuth(func(ctx ssh.Context, key ssh.PublicKey) bool {
 			user := ctx.User()
-			keys, err := ListPubkeys(user)
+			keys, err := common.ListPubkeys(user)
 			if err != nil {
 				return false
 			}
@@ -57,17 +59,14 @@ func main() {
 		wish.WithMiddleware(
 			func(next ssh.Handler) ssh.Handler {
 				return func(sess ssh.Session) {
-					ctx := &CommandContext{
-						sess: sess,
-						ch:   make(chan []byte, 1024),
-					}
-					ctx.Connect()
+					ctx := cmd.NewCommandContext(sess)
 
 					ip := ctx.IP()
 					prompt := "\033[01;32m" + sess.User() + "@" + ip + "\033[0m:\033[01;34mustc\033[0m$ "
 
+					commands := cmd.BuildCmdList()
 					terminal := term.NewTerminal(ctx, prompt)
-					terminal.AutoCompleteCallback = CommandComplete
+					terminal.AutoCompleteCallback = cmd.BuildCompletionFunc(commands)
 					id := ctx.OnWindowChange(func(window ssh.Window) {
 						terminal.SetSize(window.Width, window.Height)
 					})
@@ -89,16 +88,18 @@ func main() {
 						}
 						args, _ := shlex.Split(line, true)
 						args = append([]string(nil), args...)
-						f := Commands[args[0]]
-						if f != nil {
-							f(ctx, args)
+						cmd := commands[args[0]]
+						if cmd != nil {
+							err := cmd.Exec(ctx, args)
+							if err != nil {
+								fmt.Fprintf(terminal, "Error: %s\n", err)
+							}
 						} else {
 							fmt.Fprintf(terminal, "%s: command not found\n", args[0])
 						}
 					}
 
 					ctx.RemoveWindowChangeHandler(id)
-					ctx.Disconnect()
 					next(sess)
 				}
 			},
