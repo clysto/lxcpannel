@@ -6,7 +6,7 @@ read -p "Enter your FTP username: " FTP_USERNAME
 read -s -p "Enter your FTP password: " FTP_PASSWORD
 
 # Local file path
-LOCAL_FILE="lxcpanel_installer.sh"
+LOCAL_FILE="lxcpanel_installer.run"
 
 # Remote file path
 REMOTE_FILE="/public_html/archive/lxcpanel_installer.run"

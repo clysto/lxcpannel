@@ -26,6 +26,6 @@ ____BINARY____
 EOF
 )
 
-echo "$content" > lxcpanel_installer.sh
-cat lxcpanel >> lxcpanel_installer.sh
-chmod +x lxcpanel_installer.sh
+echo "$content" > lxcpanel_installer.run
+cat lxcpanel >> lxcpanel_installer.run
+chmod +x lxcpanel_installer.run
