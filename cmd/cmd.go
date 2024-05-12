@@ -22,8 +22,6 @@ type AliasCommand struct {
 type CommandContext struct {
 	sess                ssh.Session
 	windowChangeHanders []func(ssh.Window)
-	windowWidth         int
-	windowHeight        int
 	reader              *common.InterruptibleReader
 }
 
@@ -37,17 +35,13 @@ func NewCommandContext(sess ssh.Session) *CommandContext {
 }
 
 func (s *CommandContext) monitorWindow() {
-	pty, windowChanges, _ := s.sess.Pty()
-	s.windowWidth = pty.Window.Width
-	s.windowHeight = pty.Window.Height
+	_, windowChanges, _ := s.sess.Pty()
 	for {
 		window, ok := <-windowChanges
 		if !ok {
 			return
 		}
 		for _, f := range s.windowChangeHanders {
-			s.windowWidth = window.Width
-			s.windowHeight = window.Height
 			f(window)
 		}
 	}
@@ -59,7 +53,8 @@ func (s *CommandContext) OnWindowChange(f func(ssh.Window)) int {
 }
 
 func (s *CommandContext) WindowSize() (int, int) {
-	return s.windowWidth, s.windowHeight
+	pty, _, _ := s.sess.Pty()
+	return pty.Window.Width, pty.Window.Height
 }
 
 func (s *CommandContext) RemoveWindowChangeHandler(id int) {

@@ -72,6 +72,7 @@ func main() {
 					}
 					commands := cmd.BuildCmdList(user.Admin)
 					terminal := term.NewTerminal(ctx, prompt)
+					terminal.SetSize(ctx.WindowSize())
 					terminal.AutoCompleteCallback = cmd.BuildCompletionFunc(commands)
 					id := ctx.OnWindowChange(func(window ssh.Window) {
 						terminal.SetSize(window.Width, window.Height)
