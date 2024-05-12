@@ -111,9 +111,9 @@ func MinimumNArgs(n int) cobra.PositionalArgs {
 	}
 }
 
-func BuildCmdList() map[string]Command {
+func BuildCmdList(isAdmin bool) map[string]Command {
 	lxc := NewLxcCmd()
-	return map[string]Command{
+	commands := map[string]Command{
 		"pubkey": NewPubkeyCmd(),
 		"lxc":    lxc,
 		"ip":     &ipCmd{},
@@ -127,6 +127,10 @@ func BuildCmdList() map[string]Command {
 			Args: []string{"shell"},
 		},
 	}
+	if isAdmin {
+		commands["admin"] = NewAdminCmd()
+	}
+	return commands
 }
 
 func BuildCompletionFunc(commands map[string]Command) func(line string, pos int, key rune) (newLine string, newPos int, ok bool) {

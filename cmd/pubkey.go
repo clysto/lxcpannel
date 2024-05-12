@@ -61,7 +61,7 @@ func NewPubkeyCmd() Command {
 		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := command.ctx
-			err := common.DeletePubkey(ctx.User(), args[0])
+			err := common.DeleteUserPubkey(ctx.User(), args[0])
 			return err
 		},
 	})

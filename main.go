@@ -31,7 +31,7 @@ func main() {
 	host := flag.String("host", "0.0.0.0", "host to listen on")
 	flag.Parse()
 	var err error
-	common.LxcClient, err = lxc.NewLXCClient(*profile, *defaultImage)
+	common.Client, err = lxc.NewLXCClient(*profile, *defaultImage)
 	if err != nil {
 		panic(err)
 	}
@@ -64,7 +64,13 @@ func main() {
 					ip := ctx.IP()
 					prompt := "\033[01;32m" + sess.User() + "@" + ip + "\033[0m:\033[01;34mustc\033[0m$ "
 
-					commands := cmd.BuildCmdList()
+					user, err := common.GetUser(sess.User())
+					if err != nil {
+						log.Error("Error getting user", "error", err)
+						next(sess)
+						return
+					}
+					commands := cmd.BuildCmdList(user.Admin)
 					terminal := term.NewTerminal(ctx, prompt)
 					terminal.AutoCompleteCallback = cmd.BuildCompletionFunc(commands)
 					id := ctx.OnWindowChange(func(window ssh.Window) {

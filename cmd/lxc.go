@@ -38,7 +38,7 @@ func NewLxcCmd() Command {
 		Use: "list",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := command.ctx
-			containers, err := common.LxcClient.ListContainers(ctx.User())
+			containers, err := common.Client.ListContainers(ctx.User())
 			if err != nil {
 				return err
 			}
@@ -47,7 +47,7 @@ func NewLxcCmd() Command {
 			table.SetAlignment(tablewriter.ALIGN_LEFT)
 			table.SetHeader([]string{"Name", "Friendly Name", "State", "SSH Port"})
 			for _, container := range containers {
-				port := common.LxcClient.SSHPort(container.Name)
+				port := common.Client.SSHPort(container.Name)
 				name := container.Config["user.friendlyname"]
 				portStr := ""
 				if port == 0 {
@@ -66,7 +66,7 @@ func NewLxcCmd() Command {
 		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := command.ctx
-			err := common.LxcClient.StartContainer(ctx.User(), args[0])
+			err := common.Client.StartContainer(ctx.User(), args[0])
 			return err
 		},
 	})
@@ -75,7 +75,7 @@ func NewLxcCmd() Command {
 		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := command.ctx
-			err := common.LxcClient.StopContainer(ctx.User(), args[0])
+			err := common.Client.StopContainer(ctx.User(), args[0])
 			return err
 		},
 	})
@@ -84,7 +84,7 @@ func NewLxcCmd() Command {
 		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := command.ctx
-			err := common.LxcClient.DeleteContainer(ctx.User(), args[0])
+			err := common.Client.DeleteContainer(ctx.User(), args[0])
 			return err
 		},
 	})
@@ -93,7 +93,7 @@ func NewLxcCmd() Command {
 		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := command.ctx
-			container, err := common.LxcClient.GetContainer(ctx.User(), args[0])
+			container, err := common.Client.GetContainer(ctx.User(), args[0])
 			if err != nil {
 				return err
 			}
@@ -106,7 +106,7 @@ func NewLxcCmd() Command {
 		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := command.ctx
-			containers, err := common.LxcClient.ListContainers(ctx.User())
+			containers, err := common.Client.ListContainers(ctx.User())
 			if err != nil {
 				return err
 			}
@@ -122,7 +122,7 @@ func NewLxcCmd() Command {
 			if err != nil {
 				return err
 			}
-			op, err := common.LxcClient.CreateContainer(ctx.User(), args[0], image)
+			op, err := common.Client.CreateContainer(ctx.User(), args[0], image)
 			if err != nil {
 				return err
 			}
@@ -131,14 +131,14 @@ func NewLxcCmd() Command {
 			return err
 		},
 	}
-	createCmd.Flags().String("fingerprint", common.LxcClient.DefaultImage(), "image fingerprint")
+	createCmd.Flags().String("fingerprint", common.Client.DefaultImage(), "image fingerprint")
 	command.cmd.AddCommand(createCmd)
 	command.cmd.AddCommand(&cobra.Command{
 		Use:  "shell <name>",
 		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := command.ctx
-			container, err := common.LxcClient.GetContainer(ctx.User(), args[0])
+			container, err := common.Client.GetContainer(ctx.User(), args[0])
 			if err != nil {
 				return err
 			}
@@ -154,7 +154,7 @@ func NewLxcCmd() Command {
 				}
 			})
 			width, height := ctx.WindowSize()
-			err = common.LxcClient.StartShell(container.Name, cmd.InOrStdin(), cmd.OutOrStdout(), width, height, ch)
+			err = common.Client.StartShell(container.Name, cmd.InOrStdin(), cmd.OutOrStdout(), width, height, ch)
 			if err != nil {
 				return err
 			}
@@ -166,7 +166,7 @@ func NewLxcCmd() Command {
 	command.cmd.AddCommand(&cobra.Command{
 		Use: "images",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			images, err := common.LxcClient.ListImages()
+			images, err := common.Client.ListImages()
 			if err != nil {
 				return err
 			}

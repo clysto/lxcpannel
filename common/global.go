@@ -6,6 +6,6 @@ import (
 )
 
 var (
-	LxcClient *lxc.LXCClient
-	DB        *sql.DB
+	Client *lxc.LXCClient
+	DB     *sql.DB
 )
