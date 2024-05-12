@@ -37,7 +37,9 @@ func NewCommandContext(sess ssh.Session) *CommandContext {
 }
 
 func (s *CommandContext) monitorWindow() {
-	_, windowChanges, _ := s.sess.Pty()
+	pty, windowChanges, _ := s.sess.Pty()
+	s.windowWidth = pty.Window.Width
+	s.windowHeight = pty.Window.Height
 	for {
 		window, ok := <-windowChanges
 		if !ok {

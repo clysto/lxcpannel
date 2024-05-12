@@ -1,0 +1,14 @@
+[Unit]
+Description=lxcpanel
+After=network.target
+Wants=network.target
+
+[Service]
+Restart=always
+Type=simple
+ExecStart=/usr/local/bin/lxcpanel -port 2323 -profile default -key /var/lib/lxcpanel/ssh/id_ed25519 -db /var/lib/lxcpanel/lxcpanel.sqlite3
+StandardInput=tty-force
+Environment='LXD_SOCKET=/var/snap/lxd/common/lxd/unix.socket'
+
+[Install]
+WantedBy=multi-user.target
