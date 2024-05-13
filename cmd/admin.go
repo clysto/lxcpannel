@@ -125,10 +125,10 @@ func NewAdminCmd() Command {
 	})
 
 	pubkeyCmd.AddCommand(&cobra.Command{
-		Use:  "delete <fingerprint>",
-		Args: ExactArgs(1),
+		Use:  "delete <username> <fingerprint>",
+		Args: ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return common.DeletePubkey(args[0])
+			return common.DeletePubkey(args[0], args[1])
 		},
 	})
 

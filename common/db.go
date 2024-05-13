@@ -84,13 +84,8 @@ func AddPubkey(username, pubkey string) error {
 	return err
 }
 
-func DeleteUserPubkey(username, fingerprint string) error {
+func DeletePubkey(username, fingerprint string) error {
 	_, err := DB.Exec("DELETE FROM pubkeys WHERE username = ? AND SUBSTR(fingerprint, 1, ?) = ?", username, len(fingerprint), fingerprint)
-	return err
-}
-
-func DeletePubkey(fingerprint string) error {
-	_, err := DB.Exec("DELETE FROM pubkeys WHERE SUBSTR(fingerprint, 1, ?) = ?", len(fingerprint), fingerprint)
 	return err
 }
 
